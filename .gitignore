@@ -1,0 +1,24 @@
+# OS / editor junk
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Office lock files, backups, temp
+~$*
+*.bak
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# --- Generated data (regenerate with build_bikeshare_db.py) ---
+# The SQLite DB is ~10 GB and the raw zips are ~900 MB; both are
+# rebuilt from the public Capital Bikeshare S3 bucket, so they are
+# not tracked here. See README.md.
+capitalbikeshare.db
+*.db
+*.db-wal
+*.db-shm
+raw/
