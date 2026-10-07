@@ -1,5 +1,7 @@
 # Capital Bikeshare Station Usage Map
 
+**[View the live map →](https://dgoodenough.github.io/dc-bikeshare/)**
+
 I built this to answer one question: why do some Capital Bikeshare stations get
 pulled, and why do some never get e-bikes? The one I had in mind turned out to be
 among the worst-performing in the system, so stocking it wasn't worth it. Answering
