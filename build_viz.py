@@ -146,8 +146,8 @@ for (const info of Object.values(STATIONS)) {
 const map = L.map('map', { zoomControl: true });
 map.fitBounds([[minLat - 0.01, minLng - 0.01], [maxLat + 0.01, maxLng + 0.01]]);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; OpenStreetMap &copy; CARTO',
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   maxZoom: 19
 }).addTo(map);
 
