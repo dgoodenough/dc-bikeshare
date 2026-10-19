@@ -9,7 +9,7 @@ that turned into an interactive month-by-month map of every station's ridership
 across the DC region, built to be lightweight and honestly just fun to scroll
 through.
 
-**26,073,877 trips, May 2020 to March 2026** (71 months), 986 docked stations plus
+**29,903,305 trips, May 2020 to September 2026** (77 months), 1,042 docked stations plus
 ~1,000 dockless e-bike grid cells. Python standard library plus one Leaflet HTML
 file: no pandas, no build tooling, no API keys.
 
@@ -19,7 +19,7 @@ file: no pandas, no build tooling, no API keys.
 
 - **Shows the mode change over time.** One marker per station, sized by ride volume
   and drawn as a pie of electric (teal) vs classic (blue) trips, with orange grid
-  cells for dockless e-bikes binned to ~200m. A month slider (2020-05 → 2026-03) with
+  cells for dockless e-bikes binned to ~200m. A month slider (2020-05 → 2026-09) with
   play/speed controls and arrow-key stepping, and live totals per month. The clear
   macro story is e-bikes overtaking classic. Up close you can watch stations appear
   and disappear, including a few that clearly got shifted a block during construction
@@ -61,7 +61,7 @@ python build_viz.py            # writes bikeshare_map.html
 
 `build_bikeshare_db.py` is incremental: it skips any monthly zip already present in
 `raw/` and stops cleanly at the first month not yet published. The committed
-`map_data.json` and `bikeshare_map.html` are snapshots through March 2026, so you can
+`map_data.json` and `bikeshare_map.html` are snapshots through September 2026, so you can
 open the map immediately without rebuilding anything.
 
 ## Data source and attribution
