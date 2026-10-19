@@ -20,7 +20,9 @@ file: no pandas, no build tooling, no API keys.
 - **Shows the mode change over time.** One marker per station, sized by ride volume
   and drawn as a pie of electric (teal) vs classic (blue) trips, with orange grid
   cells for dockless e-bikes binned to ~200m. A month slider (2020-05 → 2026-09) with
-  play/speed controls and arrow-key stepping, and live totals per month. The clear
+  play/speed controls and arrow-key stepping, and live totals per month. Click a
+  station for a stacked bar chart of its monthly electric vs classic rides across
+  the whole period; clicking a bar jumps the map to that month. The clear
   macro story is e-bikes overtaking classic. Up close you can watch stations appear
   and disappear, including a few that clearly got shifted a block during construction
   and moved back a few months later.

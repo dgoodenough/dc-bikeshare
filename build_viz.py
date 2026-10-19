@@ -101,11 +101,64 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
   .station-tooltip .tip-electric { color: #00d4aa; }
   .station-tooltip .tip-classic { color: #4a9eff; }
   .leaflet-popup-tip { display: none !important; }
+
+  .chart-panel {
+    position: fixed; left: 16px; bottom: 136px; z-index: 1000;
+    width: min(560px, calc(100vw - 32px));
+    background: rgba(22, 33, 62, 0.97); border: 1px solid #0f3460; border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5); padding: 12px 14px 10px;
+    display: none;
+  }
+  .chart-panel.open { display: block; }
+  .chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .chart-title { font-size: 15px; font-weight: 700; }
+  .chart-sub { font-size: 12px; color: #a0a0b8; margin-top: 2px; }
+  .chart-close {
+    background: none; border: none; color: #a0a0b8; font-size: 20px; line-height: 1;
+    cursor: pointer; padding: 0 4px;
+  }
+  .chart-close:hover { color: #e0e0e0; }
+  .chart-legend { display: flex; gap: 14px; font-size: 12px; color: #a0a0b8; margin: 8px 0 4px; }
+  .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .chart-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .chart-wrap { position: relative; }
+  .chart-wrap svg { display: block; width: 100%; height: auto; }
+  .chart-wrap .axis { fill: #8a8aa3; font-size: 10px; font-variant-numeric: tabular-nums; }
+  .chart-wrap .grid { stroke: #2a3558; stroke-width: 1; }
+  .chart-wrap .hit { fill: transparent; cursor: pointer; }
+  .chart-wrap .hit:hover, .chart-wrap .hit.hover { fill: rgba(255,255,255,0.06); }
+  .chart-wrap .current { fill: none; stroke: #e94560; stroke-width: 1.5; }
+  .chart-tip {
+    position: absolute; pointer-events: none; display: none; white-space: nowrap;
+    background: #0f1830; border: 1px solid #1a4080; border-radius: 6px;
+    padding: 6px 10px; font-size: 12px; line-height: 1.5; color: #e0e0e0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5); transform: translate(-50%, calc(-100% - 8px));
+  }
+  .chart-tip b { font-weight: 700; }
+  .chart-tip .row { display: flex; justify-content: space-between; gap: 14px; }
+  .chart-tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+  .chart-hint { font-size: 11px; color: #8a8aa3; margin-top: 4px; }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
+
+<div class="chart-panel" id="chartPanel" role="dialog" aria-labelledby="chartTitle">
+  <div class="chart-head">
+    <div>
+      <div class="chart-title" id="chartTitle"></div>
+      <div class="chart-sub" id="chartSub"></div>
+    </div>
+    <button class="chart-close" id="chartClose" aria-label="Close chart">&times;</button>
+  </div>
+  <div class="chart-legend">
+    <span><i style="background:#00d4aa"></i>Electric</span>
+    <span><i style="background:#4a9eff"></i>Classic</span>
+  </div>
+  <div class="chart-wrap" id="chartWrap"><div class="chart-tip" id="chartTip"></div></div>
+  <div class="chart-hint">Click a bar to jump the map to that month.</div>
+</div>
 
 <div class="controls">
   <div class="controls-top">
@@ -257,7 +310,8 @@ function renderMonth(monthIdx) {
     const marker = L.marker([s.lat, s.lng], { icon })
       .bindTooltip(tooltipContent(s.name, e, c), {
         className: 'station-tooltip', direction: 'top', offset: [0, -r]
-      });
+      })
+      .on('click', () => openChart(s));
     marker.addTo(map);
     stationMarkers.push(marker);
   }
@@ -284,7 +338,123 @@ function renderMonth(monthIdx) {
   document.getElementById('statElectric').textContent = totalElectric.toLocaleString();
   document.getElementById('statClassic').textContent = totalClassic.toLocaleString();
   document.getElementById('statDockless').textContent = totalDockless.toLocaleString();
+  markChartMonth(monthIdx);
 }
+
+// Station chart: stacked monthly electric/classic bars for the clicked station
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const chartPanel = document.getElementById('chartPanel');
+const chartWrap = document.getElementById('chartWrap');
+const chartTip = document.getElementById('chartTip');
+const CW = 540, CH = 190, CL = 44, CR = 6, CT = 8, CB = 20;
+let chartStation = null, chartCurrent = null;
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * pow >= v) return m * pow;
+  return 10 * pow;
+}
+
+function openChart(s) {
+  chartStation = s;
+  const vals = MONTHS.map(ym => s.months[ym] || { e: 0, c: 0 });
+  const active = MONTHS.filter(ym => s.months[ym] && (s.months[ym].e + s.months[ym].c) > 0);
+  const totE = vals.reduce((a, v) => a + v.e, 0), totC = vals.reduce((a, v) => a + v.c, 0);
+  const tot = totE + totC;
+
+  document.getElementById('chartTitle').textContent = s.name;
+  document.getElementById('chartSub').textContent = active.length
+    ? `${tot.toLocaleString()} rides · ${Math.round(100 * totE / tot)}% electric · active ${active[0]} to ${active[active.length - 1]}`
+    : 'No rides';
+
+  const yMax = niceMax(Math.max(...vals.map(v => v.e + v.c)));
+  const plotW = CW - CL - CR, plotH = CH - CT - CB;
+  const step = plotW / MONTHS.length;
+  const barW = Math.max(1, step - Math.min(2, step * 0.25));
+  const y = v => CT + plotH - (v / yMax) * plotH;
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${CW} ${CH}`, role: 'img',
+    'aria-label': `Monthly rides at ${s.name}, electric and classic, ${MONTHS[0]} to ${MONTHS[MONTHS.length - 1]}` });
+
+  for (let i = 0; i <= 4; i++) {
+    const v = yMax * i / 4, gy = y(v);
+    svg.appendChild(svgEl('line', { class: 'grid', x1: CL, x2: CW - CR, y1: gy, y2: gy }));
+    const t = svgEl('text', { class: 'axis', x: CL - 6, y: gy + 3, 'text-anchor': 'end' });
+    t.textContent = v >= 1000 ? (v / 1000).toLocaleString() + 'k' : v.toLocaleString();
+    svg.appendChild(t);
+  }
+
+  MONTHS.forEach((ym, i) => {
+    const x = CL + i * step + (step - barW) / 2;
+    const { e, c } = vals[i];
+    // Classic on the baseline, electric stacked on top, 1px surface gap between them
+    if (c > 0) svg.appendChild(svgEl('rect', { x, y: y(c), width: barW, height: Math.max(0.5, y(0) - y(c)),
+      fill: '#4a9eff', rx: Math.min(1.5, barW / 3) }));
+    if (e > 0) {
+      const top = y(c + e), bottom = y(c) - (c > 0 ? 1 : 0);
+      svg.appendChild(svgEl('rect', { x, y: top, width: barW, height: Math.max(0.5, bottom - top),
+        fill: '#00d4aa', rx: Math.min(1.5, barW / 3) }));
+    }
+    if (ym.endsWith('-01') || i === 0) {
+      const t = svgEl('text', { class: 'axis', x: CL + i * step + step / 2, y: CH - 6, 'text-anchor': i === 0 ? 'start' : 'middle' });
+      t.textContent = ym.slice(0, 4);
+      svg.appendChild(t);
+    }
+  });
+
+  chartCurrent = svgEl('rect', { class: 'current', y: CT - 2, width: step, height: plotH + 4, rx: 2 });
+  svg.appendChild(chartCurrent);
+
+  // Full-height hit targets, wider than the bars, for hover and click
+  MONTHS.forEach((ym, i) => {
+    const hit = svgEl('rect', { class: 'hit', x: CL + i * step, y: CT, width: step, height: plotH });
+    hit.addEventListener('mouseenter', () => showChartTip(i, vals[i]));
+    hit.addEventListener('mouseleave', () => { chartTip.style.display = 'none'; });
+    hit.addEventListener('click', () => { slider.value = i; renderMonth(i); });
+    svg.appendChild(hit);
+  });
+
+  chartWrap.querySelector('svg')?.remove();
+  chartWrap.insertBefore(svg, chartTip);
+  chartPanel.classList.add('open');
+  markChartMonth(parseInt(slider.value));
+}
+
+function showChartTip(i, v) {
+  const t = v.e + v.c;
+  const pct = t ? Math.round(100 * v.e / t) : 0;
+  chartTip.innerHTML = `<b>${MONTHS[i]}</b>
+    <div class="row"><span>Total</span><span>${t.toLocaleString()}</span></div>
+    <div class="row"><span><i class="sw" style="background:#00d4aa"></i>Electric</span><span>${v.e.toLocaleString()}${t ? ` (${pct}%)` : ''}</span></div>
+    <div class="row"><span><i class="sw" style="background:#4a9eff"></i>Classic</span><span>${v.c.toLocaleString()}${t ? ` (${100 - pct}%)` : ''}</span></div>`;
+  const svg = chartWrap.querySelector('svg');
+  const scale = svg.getBoundingClientRect().width / CW;
+  const step = (CW - CL - CR) / MONTHS.length;
+  const cx = (CL + i * step + step / 2) * scale;
+  chartTip.style.display = 'block';
+  const half = chartTip.offsetWidth / 2, maxX = chartWrap.clientWidth;
+  chartTip.style.left = Math.min(Math.max(cx, half), maxX - half) + 'px';
+  chartTip.style.top = (CT * scale) + 'px';
+}
+
+function markChartMonth(i) {
+  if (!chartCurrent) return;
+  const step = (CW - CL - CR) / MONTHS.length;
+  chartCurrent.setAttribute('x', CL + i * step);
+}
+
+function closeChart() {
+  chartPanel.classList.remove('open');
+  chartStation = null; chartCurrent = null;
+}
+document.getElementById('chartClose').addEventListener('click', closeChart);
 
 // Controls
 const slider = document.getElementById('slider');
@@ -301,6 +471,8 @@ document.addEventListener('keydown', (e) => {
   } else if (e.key === 'ArrowRight' && slider.value < MONTHS.length - 1) {
     slider.value = parseInt(slider.value) + 1;
     renderMonth(parseInt(slider.value));
+  } else if (e.key === 'Escape') {
+    closeChart();
   } else if (e.key === ' ') {
     e.preventDefault();
     togglePlay();
