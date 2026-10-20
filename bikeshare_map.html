@@ -129,10 +129,7 @@
     </div>
     <button class="chart-close" id="chartClose" aria-label="Close chart">&times;</button>
   </div>
-  <div class="chart-legend">
-    <span><i style="background:#00d4aa"></i>Electric</span>
-    <span><i style="background:#4a9eff"></i>Classic</span>
-  </div>
+  <div class="chart-legend" id="chartLegend"></div>
   <div class="chart-wrap" id="chartWrap"><div class="chart-tip" id="chartTip"></div></div>
   <div class="chart-hint">Click a bar to jump the map to that month.</div>
 </div>
@@ -304,7 +301,7 @@ function renderMonth(monthIdx) {
       fillColor: '#ff9f43', fillOpacity: 0.35
     }).bindTooltip(`<div class="tip-name">Dockless e-bikes</div><div>Rides: ${cnt}</div>`, {
       className: 'station-tooltip', direction: 'top'
-    });
+    }).on('click', () => openChart(dk));
     circle.addTo(map);
     docklessMarkers.push(circle);
   }
@@ -332,33 +329,50 @@ function svgEl(tag, attrs) {
   return el;
 }
 
+// Axis top as 4 whole-number gridline steps (rides are counts, so no 12.5)
 function niceMax(v) {
-  if (v <= 0) return 1;
-  const pow = Math.pow(10, Math.floor(Math.log10(v)));
-  for (const m of [1, 2, 2.5, 5, 10]) if (m * pow >= v) return m * pow;
-  return 10 * pow;
+  const raw = Math.max(v / 4, 1);
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) {
+    const step = m * pow;
+    if (step >= raw && Number.isInteger(step)) return step * 4;
+  }
+  return 40 * pow;
 }
 
+// Opens for a station ({name, months: {ym: {e, c}}}) or a dockless cell ({key, months: {ym: count}})
 function openChart(s) {
   chartStation = s;
-  const vals = MONTHS.map(ym => s.months[ym] || { e: 0, c: 0 });
-  const active = MONTHS.filter(ym => s.months[ym] && (s.months[ym].e + s.months[ym].c) > 0);
+  const dockless = s.key !== undefined;
+  const vals = MONTHS.map(ym => dockless
+    ? { e: 0, c: 0, d: s.months[ym] || 0 }
+    : { e: 0, c: 0, d: 0, ...s.months[ym] });
+  const active = MONTHS.filter((ym, i) => vals[i].e + vals[i].c + vals[i].d > 0);
   const totE = vals.reduce((a, v) => a + v.e, 0), totC = vals.reduce((a, v) => a + v.c, 0);
-  const tot = totE + totC;
+  const totD = vals.reduce((a, v) => a + v.d, 0);
+  const tot = totE + totC + totD;
+  const name = dockless ? 'Dockless e-bikes' : s.name;
+  const range = active.length ? `active ${active[0]} to ${active[active.length - 1]}` : '';
 
-  document.getElementById('chartTitle').textContent = s.name;
-  document.getElementById('chartSub').textContent = active.length
-    ? `${tot.toLocaleString()} rides · ${Math.round(100 * totE / tot)}% electric · active ${active[0]} to ${active[active.length - 1]}`
-    : 'No rides';
+  document.getElementById('chartTitle').textContent = name;
+  document.getElementById('chartSub').textContent = !active.length ? 'No rides'
+    : dockless
+      ? `~200 m area at ${s.lat.toFixed(3)}, ${s.lng.toFixed(3)} · ${tot.toLocaleString()} rides · ${range}`
+      : `${tot.toLocaleString()} rides · ${Math.round(100 * totE / tot)}% electric · ${range}`;
+  // A single series needs no legend; the title names it
+  document.getElementById('chartLegend').innerHTML = dockless ? '' :
+    '<span><i style="background:#00d4aa"></i>Electric</span><span><i style="background:#4a9eff"></i>Classic</span>';
 
-  const yMax = niceMax(Math.max(...vals.map(v => v.e + v.c)));
+  const yMax = niceMax(Math.max(...vals.map(v => v.e + v.c + v.d)));
   const plotW = CW - CL - CR, plotH = CH - CT - CB;
   const step = plotW / MONTHS.length;
   const barW = Math.max(1, step - Math.min(2, step * 0.25));
   const y = v => CT + plotH - (v / yMax) * plotH;
 
   const svg = svgEl('svg', { viewBox: `0 0 ${CW} ${CH}`, role: 'img',
-    'aria-label': `Monthly rides at ${s.name}, electric and classic, ${MONTHS[0]} to ${MONTHS[MONTHS.length - 1]}` });
+    'aria-label': dockless
+      ? `Monthly dockless e-bike rides near ${s.lat.toFixed(3)}, ${s.lng.toFixed(3)}, ${MONTHS[0]} to ${MONTHS[MONTHS.length - 1]}`
+      : `Monthly rides at ${s.name}, electric and classic, ${MONTHS[0]} to ${MONTHS[MONTHS.length - 1]}` });
 
   for (let i = 0; i <= 4; i++) {
     const v = yMax * i / 4, gy = y(v);
@@ -370,7 +384,9 @@ function openChart(s) {
 
   MONTHS.forEach((ym, i) => {
     const x = CL + i * step + (step - barW) / 2;
-    const { e, c } = vals[i];
+    const { e, c, d } = vals[i];
+    if (d > 0) svg.appendChild(svgEl('rect', { x, y: y(d), width: barW, height: Math.max(0.5, y(0) - y(d)),
+      fill: '#ff9f43', rx: Math.min(1.5, barW / 3) }));
     // Classic on the baseline, electric stacked on top, 1px surface gap between them
     if (c > 0) svg.appendChild(svgEl('rect', { x, y: y(c), width: barW, height: Math.max(0.5, y(0) - y(c)),
       fill: '#4a9eff', rx: Math.min(1.5, barW / 3) }));
@@ -407,7 +423,9 @@ function openChart(s) {
 function showChartTip(i, v) {
   const t = v.e + v.c;
   const pct = t ? Math.round(100 * v.e / t) : 0;
-  chartTip.innerHTML = `<b>${MONTHS[i]}</b>
+  if (chartStation.key !== undefined) chartTip.innerHTML = `<b>${MONTHS[i]}</b>
+    <div class="row"><span><i class="sw" style="background:#ff9f43"></i>Dockless rides</span><span>${v.d.toLocaleString()}</span></div>`;
+  else chartTip.innerHTML = `<b>${MONTHS[i]}</b>
     <div class="row"><span>Total</span><span>${t.toLocaleString()}</span></div>
     <div class="row"><span><i class="sw" style="background:#00d4aa"></i>Electric</span><span>${v.e.toLocaleString()}${t ? ` (${pct}%)` : ''}</span></div>
     <div class="row"><span><i class="sw" style="background:#4a9eff"></i>Classic</span><span>${v.c.toLocaleString()}${t ? ` (${100 - pct}%)` : ''}</span></div>`;
