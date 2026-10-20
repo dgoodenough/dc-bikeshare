@@ -9,7 +9,7 @@ that turned into an interactive month-by-month map of every station's ridership
 across the DC region, built to be lightweight and honestly just fun to scroll
 through.
 
-**29,903,305 trips, May 2020 to September 2026** (77 months), 1,042 docked stations plus
+**29,903,305 trips, May 2020 to September 2026** (77 months), 957 docked stations plus
 ~1,000 dockless e-bike grid cells. Python standard library plus one Leaflet HTML
 file: no pandas, no build tooling, no API keys.
 
@@ -42,7 +42,7 @@ file: no pandas, no build tooling, no API keys.
 
 ```
 build_bikeshare_db.py   →  capitalbikeshare.db   (download + load all trips)
-extract_map_data.py     →  map_data.json         (aggregate to station-months)
+extract_map_data.py     →  map_data.json         (aggregate to station-months, merge renamed stations)
 build_viz.py            →  bikeshare_map.html     (embed JSON into the template)
 ```
 
@@ -50,6 +50,7 @@ build_viz.py            →  bikeshare_map.html     (embed JSON into the templat
 |---|---|
 | `build_bikeshare_db.py` | Downloads every monthly trip zip from the public Capital Bikeshare S3 bucket (`2020-05` → present), normalizes the column variants into one canonical schema, and loads them into a SQLite DB with derived columns (`start_date`, `start_hour`, `year_month`, `is_electric`), 10 indexes, and a `station_summary` view. Stdlib only. |
 | `extract_map_data.py` | Queries the DB into a compact `map_data.json`: per-station monthly electric/classic counts, plus dockless e-bike rides grid-binned to ~200m cells. |
+| `merge_stations.py` | Folds records that are one physical dock into one station: renames ("Lee Hwy" → "Langston Blvd"), typo variants, and short closures where a dock comes back under a new name. The rule is within 30 m, almost never active in the same month, and at most 12 months apart. Called by `extract_map_data.py`; can also be run on `map_data.json` directly. |
 | `build_viz.py` | Inlines `map_data.json` into the Leaflet HTML template and writes `bikeshare_map.html`. |
 | `bikeshare_explore.ipynb` | Notebook that ran the full pipeline end to end, with recorded outputs: trips per month, top stations, bike-type and member/casual splits, hour-of-day, and electric-share leaders. |
 

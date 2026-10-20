@@ -11,6 +11,8 @@ import sqlite3
 import json
 from pathlib import Path
 
+from merge_stations import merge_stations
+
 OUTPUT = "map_data.json"
 
 db = sqlite3.connect("capitalbikeshare.db")
@@ -89,7 +91,12 @@ print(f"  Months: {months[0]} to {months[-1]} ({len(months)} total)")
 
 db.close()
 
-# 4. Write JSON
+# 4. Fold renamed / re-docked stations into one record each (see merge_stations.py)
+groups = merge_stations(stations, months)
+print(f"  Merged {sum(len(a) for _, a in groups)} renamed station records into "
+      f"{len(groups)} stations ({len(stations)} stations remain)")
+
+# 5. Write JSON
 output = {
     "months": months,
     "stations": stations,
